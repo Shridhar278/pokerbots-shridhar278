@@ -1,18 +1,14 @@
 '''
-Simple example pokerbot, written in Python.
+First Attempt at Understanding the Game and Implementing a Bot
 '''
 from pkbot.actions import ActionFold, ActionCall, ActionCheck, ActionRaise, ActionBid
-from pkbot.states import GameInfo, PokerState
+from pkbot.states import GameInfo, PokerState # the only one that matters
 from pkbot.base import BaseBot
 from pkbot.runner import parse_args, run_bot
 
 import random
 
-
 class Player(BaseBot):
-    '''
-    A pokerbot.
-    '''
 
     def __init__(self) -> None:
         '''
@@ -25,6 +21,7 @@ class Player(BaseBot):
         Returns:
         Nothing.
         '''
+        # Pretty excited about this.
         pass
 
     def on_hand_start(self, game_info: GameInfo, current_state: PokerState) -> None:
@@ -87,30 +84,59 @@ class Player(BaseBot):
         Your action.
         '''
 
+        # indegenious approach
+        c1, c2 = current_state.my_hand
+        min_raise, max_raise = current_state.raise_bounds
+        solid_raise = int(max(min(max_raise/10, min_raise*10), min_raise))
+        # the actions
         if current_state.street == 'auction':
-            v = random.uniform(0, 0.3)
-            return ActionBid(int(v * current_state.my_chips))
-
-        if current_state.opp_revealed_cards:
-            # Looking at info from bid
-            for card in current_state.opp_revealed_cards:
-                # If opponent has a high card, we fold
-                if ('A' in card) or ('K' in card) or ('Q' in card) or ('J' in card):
-                    if current_state.can_act(ActionFold):
-                        return ActionFold()
-                    else:
-                        return ActionCheck()
-
-        if current_state.can_act(ActionRaise):
-            # the smallest and largest numbers of chips for a legal bet/raise
-            min_raise, max_raise = current_state.raise_bounds
-            if random.random() < 0.5:
+            bid = random.uniform(0.6, 0.9) * current_state.my_chips
+            return ActionBid(int(bid))
+        if current_state.street == 'pre-flop':
+            if (c1[0] == c2[0]) or (c1[0] in 'TAKQJ') or (c1[0] in 'TAKQJ'):  # good hand
+                return ActionRaise(solid_raise)
+            elif c1[1] == c2[1]: # suited
                 return ActionRaise(min_raise)
-        if current_state.can_act(ActionCheck):  # check-call
-            return ActionCheck()
-        if random.random() < 0.25:
-            return ActionFold()
-        return ActionCall()
+            else:
+                return ActionCall()
+        if current_state.street in ['flop', 'turn', 'river']:
+            # 0.full house, straight flush, royal flush -> LEAVE for NOW
+            # 1.straight, flush, four of a kind -> max raise
+            # 2.three of a kind -> solid raise
+            # 3.two pair -> min raise
+            # 4.one pair -> solid raise (bluff)
+            # 5.nothing -> call if (random < 0.75) else fold
+            alikes = [0 for _ in range(13)]
+            suits = [0 for _ in range(4)]
+            for card in current_state.my_hand + current_state.board:
+                alikes['23456789TJQKA'.index(card[0])] += 1
+                suits['cdhs'.index(card[1])] += 1
+            
+            if current_state.can_act(ActionRaise):
+                if max(suits) >= 5: # Flush
+                    return ActionRaise(max_raise)
+                for i in range(9): # Straight
+                    if alikes[i] and alikes[i+1] and alikes[i+2] and alikes[i+3] and alikes[i+4]:
+                        return ActionRaise(max_raise)
+                if alikes[12] and alikes[0] and alikes[1] and alikes[2] and alikes[3]:
+                    return ActionRaise(max_raise)
+                if max(alikes) >= 4: # Four of a Kind
+                    return ActionRaise(max_raise)
+            
+                if max(alikes) >= 3: # Three Pair or better
+                    return ActionRaise(solid_raise)
+                elif max(alikes) == 2 and alikes.count(2) >= 2: # Two Pair
+                    return ActionRaise(min_raise)
+                elif max(alikes) == 2: # One Pair
+                    return ActionRaise(solid_raise)
+            
+            if current_state.can_act(ActionCheck):
+                return ActionCheck()
+            
+            if (random.random() < 0.75) and (current_state.can_act(ActionCall)):
+                return ActionCall()
+            elif current_state.can_act(ActionFold):
+                return ActionFold()
 
 
 if __name__ == '__main__':
