@@ -1,5 +1,6 @@
+from calendar import c
 import dis
-from operator import ne
+from operator import le, ne
 import re
 
 from engine import BIG_BLIND
@@ -33,27 +34,28 @@ class Player(BaseBot):
             total-=1
         else:
             total-=2
-        for rank in 'AKQJT98765432':
+        ranks = 'AKQJT98765432'
+        for rank in range(len(ranks)):
             count=0
             free=0
             for suit in 'cdhs':
-                if self.states[rank+suit] in (role, 0):
+                if self.states[ranks[rank]+suit] in (role, 0):
                     count+=1
-                elif self.states[rank+suit] == None:
+                elif self.states[ranks[rank]+suit] == None:
                     free+=1
             if count>=want:
                 need+=1
                 honor=rank
                 if (need==sets):
-                    return 1, honor
+                    return [[rank, honor]]
             else:
                 count=want-count
                 if count<=free:
                     scope.append([rank, free, count])
-        if need==1:
+        if sets-need==1:
             prob = [] # (rank1 (if necessary), rank2, probability
             for rank, free, count in scope:
-                if (slots==1):
+                if (sets==1):
                     prob.append([rank, (comb(slots, count)*comb(free, count))/comb(total, slots)])
                 else:
                     prob.append([min(rank, honor), max(rank, honor), (comb(slots, count)*comb(free, count))/comb(total, slots)])
@@ -87,8 +89,16 @@ class Player(BaseBot):
     # def flush(self, role, slots):
     #     pass
 
-    # def full_house(self, role, slots):
-    #     return 
+    def full_house(self, role, slots):
+        # prob of three of a kind and one pair
+        three = self.alike_odds(role, 3, 1, slots)
+        two = self.alike_odds(role, 2, 1, slots)
+        prob = []
+        for rank3, prob3 in three:
+            for rank2, prob2 in two:
+                if (rank2!=rank3):
+                    prob.append([rank3, rank2, prob3*prob2])
+        return prob
 
     def four_of_a_kind(self, role, slots):
         return self.alike_odds(role, 4, 1, slots)
@@ -107,31 +117,46 @@ class Player(BaseBot):
                 d1+=1
                 if (d1==len(distro1)):
                     d1-=1
+                    d2+=1
             elif (distro1[d1][0] > distro2[d2][0]):
                 prob2=rest*distro2[d2][1]
                 d2+=1
                 if (d2==len(distro2)):
                     d2-=1
+                    d1+=1
             else:
                 prob1=rest*distro1[d1][1]*(1-distro2[d2][1])
                 prob2=rest*distro2[d2][1]*(1-distro1[d1][1])
                 d1+=1
                 d2+=1
+                if (d1==len(distro1) and d2!=len(distro2)):
+                    d1-=1
+                if (d2==len(distro2) and d1!=len(distro1)):
+                    d2-=1
             prob_a += prob1
             prob_b += prob2
             rest = 1-(prob1+prob2)
         return prob_a, prob_b
 
+#    def comparator_double(self, p1, p2, distro1, distro2):
+
+
     def compare_strength(self, slots):
         me, oppo= 0, 0
+        # check for straight flush:
         # check for four of a kind:
         m_4 = self.four_of_a_kind(1, slots)
         o_4 = self.four_of_a_kind(-1, slots)
         me, oppo = self.comparator_single(me, oppo, m_4, o_4)
+        # check for full house:
         # check for three of a kind:
         m_3 = self.three_of_a_kind(1, slots)
         o_3 = self.three_of_a_kind(-1, slots)
         me, oppo = self.comparator_single(me, oppo, m_3, o_3)
+        # check for two pair:
+        m_2x2 = self.two_pair(1, slots)
+        o_2x2 = self.two_pair(-1, slots)
+        # me, oppo = self.comparator_double(me, oppo, m_2x2, o_2x2)
         # check for one pair:
         m_2x1 = self.one_pair(1, slots)
         o_2x1 = self.one_pair(-1, slots)
@@ -183,7 +208,8 @@ class Player(BaseBot):
             for card in current_state.board:
                 self.states[card] = 0
         if street == 'pre-flop':
-            if (current_state.cost_to_call > BIG_BLIND*2 and self.aggression!=3):
+            if (self.aggression!=3 and (oppo_wager>my_wager+BIG_BLIND*3
+                                         and current_state.can_act(ActionFold))):
                 self.aggression=-1
                 # our aggression starts post Auction
             if (self.aggression>0 and current_state.can_act(ActionRaise)):
