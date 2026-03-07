@@ -93,7 +93,7 @@ class Player(BaseBot):
             bid = random.uniform(0.6, 0.9) * current_state.my_chips
             return ActionBid(int(bid))
         if current_state.street == 'pre-flop':
-            if (c1[0] == c2[0]) or (c1[0] in 'TAKQJ') or (c1[0] in 'TAKQJ'):  # good hand
+            if (c1[0] == c2[0]) or (c1[0] in 'TAKQJ') or (c2[0] in 'TAKQJ'):  # good hand
                 return ActionRaise(solid_raise)
             elif c1[1] == c2[1]: # suited
                 return ActionRaise(min_raise)
